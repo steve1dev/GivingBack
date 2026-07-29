@@ -1,0 +1,1 @@
+var e=`/assets/img/reciclar.png`;export{e as t};

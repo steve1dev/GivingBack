@@ -1,0 +1,1 @@
+var e=`/assets/img/givingPoint.png`;export{e as t};

@@ -1,0 +1,59 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.header {
+  background: white;
+  padding: 20px;
+}
+
+.header a {
+  text-decoration: none;
+  color: #0D2B0D;
+  font-weight: bold;
+  font-size: 20px;
+}
+
+.camera-container {
+  font-family: Arial, sans-serif;
+  background: #0D2B0D;
+  color: white;
+  text-align: center;
+  padding: 50px 20px;
+  min-height: 100vh;
+}
+
+h1 {
+  margin-bottom: 20px;
+}
+
+video {
+  width: 80%;
+  max-width: 700px;
+  border-radius: 15px;
+  border: 3px solid #7CFC7C;
+}
+
+button {
+  margin-top: 20px;
+  padding: 12px 24px;
+  border: none;
+  border-radius: 25px;
+  background: #7CFC7C;
+  color: #0D2B0D;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+button:hover {
+  opacity: 0.9;
+}
+
+img {
+  margin-top: 20px;
+  width: 80%;
+  max-width: 700px;
+  border-radius: 15px;
+}
