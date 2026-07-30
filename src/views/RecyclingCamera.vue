@@ -14,7 +14,7 @@ const materialProfiles = {
   'Plastic bottle': { points: 1, category: 'Plastic', label: 'Plastic Bottle' },
   Paper: { points: 1, category: 'Paper', label: 'Paper' },
   Cardboard: { points: 2, category: 'Cardboard', label: 'Cardboard' },
-  Glass: { points: 4, category: 'Glass', label: 'Glass' },
+  Cans: { points: 4, category: 'Glass', label: 'Glass' },
 }
 
 const supportedMaterialsText = Object.values(materialProfiles)
@@ -313,7 +313,7 @@ if (materialProfiles[detectedObject]) {
   statusLabel.value = `Material detected: ${data.category}`
   statusTone.value = 'success'
 
-  let rewardMessage = `¡Se agregaron ${data.points} puntos a tu perfil por detectar ${data.category}!`
+  let rewardMessage = ` ${data.points} Point have been added to your profile for detecting ${data.category}!`
 
   try {
     const persisted = await persistRecyclingDetection(detectedObject, probability)
@@ -334,7 +334,7 @@ if (materialProfiles[detectedObject]) {
     totalPoints.value = previousPoints + data.points
     saveLocalRecyclingActivity(data.category, data.points, detectedObject)
     localStorage.setItem('givingPoints', String(totalPoints.value))
-    rewardMessage = `Se sumaron ${data.points} puntos localmente. Se sincronizarán con tu perfil pronto.`
+    rewardMessage = ` ${data.points} Point have been added locally. They will be synced with your profile soon.`
     statusLabel.value = `Material detected: ${data.category}. Pending sync with server.`
     statusTone.value = 'warning'
   }

@@ -17,6 +17,6 @@
 <script setup>
 const collaborators = [
   { name: 'Dollarcity', role: '', logo: '/assets/img/logo dollar.jpeg' },
-  { name: 'ADOC',       role: '', logo: '/assets/img/adoc.png' },
-]
+  ]
+
 </script>

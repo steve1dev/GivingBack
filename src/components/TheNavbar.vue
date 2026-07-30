@@ -8,8 +8,7 @@
       </div>
 
       <div class="menu-desktop">
-        <RouterLink to="/Adquirir" class="nav-link">Acquire</RouterLink>
-        <RouterLink to="/camera" class="nav-link">Donate</RouterLink>
+        <RouterLink to="/camera" class="nav-link">Scan</RouterLink>
         <RouterLink to="/Giving-Map" class="nav-link">Giving Map</RouterLink>
         <RouterLink to="/Learn" class="nav-link">Learn</RouterLink>
         <a href="/#team" class="nav-link">About Us</a>

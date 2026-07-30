@@ -5,7 +5,7 @@
   <div class="page">
 
     <div v-if="rewardMessage" class="reward-banner" role="status" aria-live="polite">
-      <strong>¡Puntos agregados!</strong>
+      <strong>¡Points Added!</strong>
       <span>{{ rewardMessage }}</span>
     </div>
 
@@ -132,7 +132,7 @@ const user = reactive({
   nextLevelPoints: 500,
   streakDays: 0,
   photoUrl: '',
-  streakMessage: 'Recicla hoy para mantener la racha',
+  streakMessage: 'Recycle today to keep the streak going.',
   recycledToday: false,
 })
 
@@ -287,10 +287,10 @@ function buildStreakMessage(events) {
   })
 
   if (hasToday) {
-    return '¡Sigues en racha hoy!'
+    return 'You\'re on a roll today!'
   }
 
-  return 'Recicla hoy para mantener la racha'
+  return 'Recycle today to keep the streak going.'
 }
 
 async function loadAccountData() {

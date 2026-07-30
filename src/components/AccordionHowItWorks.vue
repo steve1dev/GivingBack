@@ -48,8 +48,8 @@ const steps = [
     icon: 'givingPoint',
   },
   {
-    title: 'Redeem or keep accumulating',
-    desc: 'Use your Giving Points to redeem rewards.',
+    title: 'Keep accumulating',
+    desc: 'Continue recycling to earn more points and reach higher levels.',
   },
 ]
 </script>

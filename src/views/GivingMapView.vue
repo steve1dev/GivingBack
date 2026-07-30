@@ -15,35 +15,20 @@
       </div>
 
       <div class="section-title">
-        <i class="fas fa-building"></i> Partner Companies
+        <i class="fas fa-building"></i> Partner Company
       </div>
       <div class="companies-container">
         <button 
           class="company-btn" 
           :class="{ active: activeFilter === 'all' }" 
           @click="filterStores('all')"
-        >
-          All
-        </button>
-        <button 
-          class="company-btn" 
-          :class="{ active: activeFilter === 'dollarcity' }" 
-          @click="filterStores('dollarcity')"
-        >
+        > 
           Dollarcity
-        </button>
-        <button 
-          class="company-btn" 
-          :class="{ active: activeFilter === 'adoc' }" 
-          @click="filterStores('adoc')"
-        >
-          Adoc
+        
         </button>
       </div>
 
-      <div class="section-title">
-        <i class="fas fa-store-alt"></i> Available Branches
-      </div>
+      
       
       <div class="stores-list">
         <div 
@@ -118,12 +103,7 @@ const storesData = [
   { id: 8, company: 'dollarcity', name: 'Dollarcity El Encuentro Opico', address: 'km 28 Carretera a Santa Ana Centro Comercial El Encuentro Opico, Mini ancla 1', lat: 13.8214, lng: -89.3512 },
 
   // --- ADOC ---
-  { id: 4, company: 'adoc', name: 'Adoc Metrocentro Santa Ana', address: 'CC Metrocentro Santa Ana Local 142, 143, 144 y 145, Etapa 2, Santa Ana', lat: 13.9781, lng: -89.5645 },
-  { id: 5, company: 'adoc', name: 'Adoc Plaza Merliot', address: 'Plaza Merliot, Local 312 y 313, Santa Tecla', lat: 13.6787, lng: -89.2667 },
-  { id: 9, company: 'adoc', name: 'ADOC Metrocentro San Salvador', address: 'Metrocentro, Etapa 3, Local 77, 78 B', lat: 13.7162, lng: -89.2012 },
-  { id: 10, company: 'adoc', name: 'ADOC La Gran Vía', address: 'Centro Comercial El Gran Bazar, La, Santa Tecla', lat: 13.6739, lng: -89.2524 },
-  { id: 11, company: 'adoc', name: 'ADOC • Ahuachapán', address: 'Av. Francisco Menéndez Nte., Ahuachapán 2101', lat: 13.9215, lng: -89.8465 },
-  { id: 12, company: 'adoc', name: 'ADOC MetroSur', address: 'Metrosur Local C-313 Etapa 6, San Salvador', lat: 13.7142, lng: -89.2023 }
+  
 ];
 
 // Computed property para filtrar la lista reactivamente
@@ -278,6 +258,7 @@ body, html {
     display: flex;
     flex-direction: column;
     z-index: 999;
+    border-right: 1px solid #00000073;
 }
 
 .header {

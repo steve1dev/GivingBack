@@ -63,7 +63,7 @@ import GivingChat            from '../components/GivingChat.vue'
 const slides = [
   { img: '/assets/img/recycling-hero.jpg',  title: 'Transforming communities', desc: 'We work for a greener and more sustainable future' },
   { img: '/assets/img/bottles-hero.jpg',    title: 'Constant innovation',       desc: 'We eliminate contaminants before they contaminate.' },
-  { img: '/assets/img/volunteer-hero.jpeg', title: 'Together we are stronger',  desc: 'Collaborating with the best allies' },
+  { img: '/assets/img/womanRecycling.png', title: 'Together we are stronger',  desc: 'Collaborating with the best allies' },
 ]
 
 const team = [
