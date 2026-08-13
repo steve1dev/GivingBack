@@ -15,6 +15,7 @@
 .windsurf
 
 # Local env files
+.env
 .env.local
 .env.*.local
 # node_modules

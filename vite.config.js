@@ -1,17 +1,12 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import basicSsl from '@vitejs/plugin-basic-ssl'
 
-// The self-signed HTTPS cert is only for testing on other devices on the same
-// local network during development (getUserMedia requires a secure context
-// off localhost) — it has no role in the production build that Vercel serves.
-export default defineConfig(({ command }) => ({
-  plugins: [
-    vue(),
-    ...(command === 'serve' ? [basicSsl()] : []),
-  ],
+// Plain HTTP dev server. Browsers treat http://localhost as a secure context,
+// so getUserMedia (camera scan) still works — this only stops working over
+// HTTP if the app is opened via a LAN IP instead of localhost.
+export default defineConfig({
+  plugins: [vue()],
   server: {
     host: true,
-    https: true,
   },
-}))
+})
