@@ -146,7 +146,7 @@ body {
 .menu-extra-divider { height: 1px; background: #e5e5e5; margin: 6px 0; }
 
 /* ==================== HERO CAROUSEL ==================== */
-.sectionHero { background: #0D2B0D !important; color: white; padding: 0; border-bottom: 1px solid rgba(255,255,255,0.1); }
+.sectionHero { background: #0D2B0D !important; color: white; padding: 0; border-bottom: 1px solid rgba(255,255,255,0.1); position: relative; }
 
 .carousel-container {
   max-width: 900px; margin: 10px auto; position: relative;
@@ -177,6 +177,34 @@ body {
   margin: 0 6px; cursor: pointer; transition: 0.3s;
 }
 .dot.active { background: #F2C94C; width: 20px; }
+
+/* On desktop the hero goes full-bleed and fills the viewport, like a real landing splash
+   instead of a boxed card — the boxed/rounded treatment stays for mobile/tablet. */
+@media (min-width: 1024px) {
+  .carousel-container {
+    max-width: none;
+    margin: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .carousel-slide img {
+    /* 88px = the sticky header's rendered height, so header + hero exactly fill one screen. */
+    height: calc(100vh - 88px);
+    min-height: 560px;
+    max-height: 1000px;
+  }
+  .caption {
+    padding: clamp(40px, 6vw, 80px) clamp(40px, 6vw, 80px) 96px;
+  }
+  .caption h2 { font-size: clamp(2.6rem, 4vw, 4.2rem); margin-bottom: 14px; }
+  .caption p { font-size: clamp(1.1rem, 1.6vw, 1.35rem); max-width: 640px; margin: 0 auto; }
+  .carousel-btn { width: 56px; height: 56px; font-size: 1.6rem; }
+  .prev { left: clamp(20px, 3vw, 48px); } .next { right: clamp(20px, 3vw, 48px); }
+  .dots {
+    position: absolute; left: 0; right: 0; bottom: 28px;
+    padding: 0; z-index: 6;
+  }
+}
 
 /* ==================== ACORDEON "HOW IT WORKS" ==================== */
 .seccion-label, .seccion-titulo, .acordeon-header, .acordeon-body {

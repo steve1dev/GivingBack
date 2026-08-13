@@ -12,7 +12,7 @@
         <RouterLink to="/Giving-Map" class="nav-link">Giving Map</RouterLink>
         <RouterLink to="/Learn" class="nav-link">Learn</RouterLink>
         <a href="/#team" class="nav-link">About Us</a>
-        <a href="/#collaborators" class="nav-link">Collaborators</a>
+        <RouterLink to="/Collaborators" class="nav-link">Collaborators</RouterLink>
         
 
         
@@ -39,6 +39,8 @@
                 :src="userAvatarUrl"
                 :alt="`Avatar de ${auth.username}`"
                 class="auth-avatar__img"
+                referrerpolicy="no-referrer"
+                @error="handleAvatarError"
               />
               <span v-else>{{ userInitials }}</span>
             </span>
@@ -58,7 +60,7 @@
       <div class="menu-extra" :class="{ active: menuOpen }">
         <RouterLink to="/Adquirir" @click="closeMenu">Acquire</RouterLink>
         <a href="#team" @click="closeMenu">About Us</a>
-        <a href="#collaborators" @click="closeMenu">Collaborators</a>
+        <RouterLink to="/Collaborators" @click="closeMenu">Collaborators</RouterLink>
         <RouterLink to="/Giving-Map" @click="closeMenu">Giving Map</RouterLink>
         <RouterLink to="/camera" @click="closeMenu">Donate</RouterLink>
         <RouterLink to="/Learn" @click="closeMenu">Learn</RouterLink>
@@ -75,6 +77,8 @@
                 :src="userAvatarUrl"
                 :alt="`Avatar de ${auth.username}`"
                 class="auth-avatar__img"
+                referrerpolicy="no-referrer"
+                @error="handleAvatarError"
               />
               <span v-else>{{ userInitials }}</span>
             </span>
@@ -96,6 +100,7 @@ const auth    = useAuthStore()
 const router  = useRouter()
 const menuOpen = ref(false)
 const resolvedAvatarUrl = ref(auth.user?.avatarUrl || '')
+const failedAvatarUrl = ref('')
 
 const userInitials = computed(() => {
   const parts = String(auth.username || '').trim().split(/\s+/).filter(Boolean)
@@ -104,7 +109,14 @@ const userInitials = computed(() => {
   return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
 })
 
-const userAvatarUrl = computed(() => resolvedAvatarUrl.value || auth.user?.avatarUrl || '')
+// Falling back to auth.user.avatarUrl means a failed load can't just clear
+// resolvedAvatarUrl — that OR-chain would immediately resurrect the same bad
+// URL. failedAvatarUrl suppresses exactly that URL until a different one shows up.
+const avatarSourceUrl = computed(() => resolvedAvatarUrl.value || auth.user?.avatarUrl || '')
+const userAvatarUrl = computed(() => {
+  if (avatarSourceUrl.value && avatarSourceUrl.value === failedAvatarUrl.value) return ''
+  return avatarSourceUrl.value
+})
 
 async function resolveAvatarFromCurrentUser() {
   if (!auth.isLoggedIn) {
@@ -164,7 +176,7 @@ function closeMenu() {
 }
 
 function handleAvatarError() {
-  resolvedAvatarUrl.value = ''
+  failedAvatarUrl.value = avatarSourceUrl.value
 }
 
 function handleLogout() {

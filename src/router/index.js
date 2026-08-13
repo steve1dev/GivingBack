@@ -51,7 +51,13 @@ const routes = [
     name: 'Learn',
     component: () => import('../views/LearnView.vue'),
     meta: { requiresAuth: true },
-  }
+  },
+
+  {
+    path: '/Collaborators',
+    name: 'Collaborators',
+    component: () => import('../views/CollaboratorsView.vue'),
+  },
 ]
 
 const router = createRouter({

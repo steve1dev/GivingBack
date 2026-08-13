@@ -21,7 +21,7 @@
     <div class="card">
       <div class="identity">
         <div class="avatar">
-          <img v-if="user.photoUrl" :src="user.photoUrl" alt="Foto de perfil" class="avatar-img" @error="user.photoUrl = ''" />
+          <img v-if="user.photoUrl" :src="user.photoUrl" alt="Foto de perfil" class="avatar-img" referrerpolicy="no-referrer" @error="user.photoUrl = ''" />
           <span v-else class="avatar-initials">{{ user.initials }}</span>
         </div>
         <div class="id-text">
