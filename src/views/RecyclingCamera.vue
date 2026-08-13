@@ -6,7 +6,7 @@ import { getInsforgeClient, useAuthStore } from '../stores/auth.js'
 
 const TFJS_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js'
 const TM_IMAGE_URL = 'https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js'
-const MODEL_BASE_URL = '../../tm-my-image-model/'
+const MODEL_BASE_URL = '/tm-my-image-model/'
 const CONFIDENCE_THRESHOLD = 0.92
 const AMBIGUITY_MARGIN = 0.12
 
