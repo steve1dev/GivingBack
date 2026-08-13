@@ -1,5 +1,5 @@
 [auth]
-allowed_redirect_urls = ["https://giving-back-six.vercel.app/login"]
+allowed_redirect_urls = ["https://giving-back-six.vercel.app/login", "http://localhost:5173/login"]
 require_email_verification = false
 verify_email_method = "code"
 reset_password_method = "code"
