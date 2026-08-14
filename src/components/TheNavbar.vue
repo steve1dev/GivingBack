@@ -58,12 +58,11 @@
       </button>
 
       <div class="menu-extra" :class="{ active: menuOpen }">
-        <RouterLink to="/Adquirir" @click="closeMenu">Acquire</RouterLink>
+        <RouterLink to="/camera" @click="closeMenu">Scan</RouterLink>
+        <RouterLink to="/Giving-Map" @click="closeMenu">Giving Map</RouterLink>
+        <RouterLink to="/Learn" @click="closeMenu">Learn</RouterLink>
         <a href="#team" @click="closeMenu">About Us</a>
         <RouterLink to="/Collaborators" @click="closeMenu">Collaborators</RouterLink>
-        <RouterLink to="/Giving-Map" @click="closeMenu">Giving Map</RouterLink>
-        <RouterLink to="/camera" @click="closeMenu">Donate</RouterLink>
-        <RouterLink to="/Learn" @click="closeMenu">Learn</RouterLink>
         <div class="menu-extra-divider"></div>
         <template v-if="!auth.isLoggedIn">
           <RouterLink to="/login" @click="closeMenu">Log In</RouterLink>

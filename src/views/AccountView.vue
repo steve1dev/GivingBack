@@ -107,7 +107,7 @@ import { useRoute } from 'vue-router'
 import TheNavbar from '../components/TheNavbar.vue'
 import GivingChat from '../components/GivingChat.vue'
 import BackButton from '../components/BackButton.vue'
-import { getInsforgeClient, resolveAvatarUrl, useAuthStore } from '../stores/auth.js'
+import { getInsforgeClient, useAuthStore } from '../stores/auth.js'
 
 const auth = useAuthStore()
 const route = useRoute()
@@ -293,113 +293,129 @@ function buildStreakMessage(events) {
   return 'Recycle today to keep the streak going.'
 }
 
-async function loadAccountData() {
+// Fetches are skipped if the last successful load happened within this window,
+// so refocusing the tab doesn't re-trigger the full round trip every time.
+const REFRESH_THROTTLE_MS = 20000
+let lastLoadedAt = 0
+let inFlightLoad = null
+
+async function loadAccountData({ force = false } = {}) {
   if (!auth.isLoggedIn) return
+  if (!force && Date.now() - lastLoadedAt < REFRESH_THROTTLE_MS) return
+  if (inFlightLoad) return inFlightLoad
 
-  const persistedPoints = Number(localStorage.getItem('givingPoints')) || 0
-  if (persistedPoints > 0 || user.points > 0) {
-    user.points = Math.max(user.points, persistedPoints)
-  }
+  inFlightLoad = (async () => {
+    const persistedPoints = Number(localStorage.getItem('givingPoints')) || 0
+    if (persistedPoints > 0 || user.points > 0) {
+      user.points = Math.max(user.points, persistedPoints)
+    }
 
-  const client = getInsforgeClient()
-  const { data: currentUserPayload, error: currentUserError } = await client.auth.getCurrentUser()
-  if (currentUserError || !currentUserPayload?.user) return
+    // The session already carries id/email/avatar resolved at login/OAuth-callback
+    // time (see stores/auth.js syncCurrentUser). Reusing it here — instead of
+    // re-fetching getCurrentUser()+getProfile() on every mount/focus — removes two
+    // sequential network round trips before the data queries below even start.
+    const sessionUser = auth.user
+    const baseName = sessionUser?.username || 'Usuario'
 
-  const currentUser = currentUserPayload.user
-  const baseName = currentUser.profile?.name || auth.username || currentUser.email?.split('@')[0] || 'Usuario'
-  let oauthAvatarUrl = resolveAvatarUrl(currentUser) || ''
+    user.name = baseName
+    user.email = sessionUser?.email || 'Not available'
+    user.initials = buildInitials(baseName)
+    user.photoUrl = sessionUser?.avatarUrl || buildAvatarFallback(baseName)
+    user.memberSince = formatMemberSince(sessionUser?.createdAt)
+
+    const client = getInsforgeClient()
+
+    const [profileResult, walletResult, streakResult, totalsResult, eventsResult] = await Promise.allSettled([
+      client.database.from('account_profiles').select('display_name, phone, avatar_url, member_since').maybeSingle(),
+      client.database.from('user_points_wallet').select('total_points').maybeSingle(),
+      client.database.from('user_recycling_streak').select('current_streak_days, last_recycle_date').maybeSingle(),
+      client.database.from('user_material_totals').select('material_category, item_count').limit(50),
+      client.database
+        .from('recycling_events')
+        .select('material_category, quantity, recycled_at')
+        .order('recycled_at', { ascending: false })
+        .limit(60),
+    ])
+
+    const profileResultValue = profileResult.status === 'fulfilled' ? profileResult.value : null
+    const walletResultValue = walletResult.status === 'fulfilled' ? walletResult.value : null
+    const streakResultValue = streakResult.status === 'fulfilled' ? streakResult.value : null
+    const totalsResultValue = totalsResult.status === 'fulfilled' ? totalsResult.value : null
+    const eventsResultValue = eventsResult.status === 'fulfilled' ? eventsResult.value : null
+
+    const profile = profileResultValue?.data || null
+    const wallet = walletResultValue?.data || null
+    const streak = streakResultValue?.data || null
+    const totals = totalsResultValue?.data || []
+    // Capped at the 60 most recent server rows (see query above) — plenty for
+    // streak/weekly-activity display, but not a source of truth for lifetime kg.
+    const serverEvents = eventsResultValue?.data || []
+    const localEvents = JSON.parse(localStorage.getItem('giving_recycling_history') || '[]')
+    const events = normalizeEvents([...serverEvents, ...localEvents])
+
+    if (profile?.display_name) {
+      user.name = profile.display_name
+    }
+
+    user.phone = profile?.phone || 'Not available'
+    user.photoUrl = sessionUser?.avatarUrl || profile?.avatar_url || buildAvatarFallback(user.name)
+    if (profile?.member_since) {
+      user.memberSince = formatMemberSince(profile.member_since)
+    }
+
+    const walletPoints = walletResultValue?.error
+      ? persistedPoints
+      : Number(wallet?.total_points ?? persistedPoints)
+
+    const nextPoints = Number.isFinite(walletPoints) && walletPoints >= Math.max(user.points, persistedPoints)
+      ? walletPoints
+      : Math.max(user.points, persistedPoints)
+
+    user.points = nextPoints
+    localStorage.setItem('givingPoints', String(user.points))
+
+    const derivedStreak = Number(streak?.current_streak_days || 0)
+    user.streakDays = derivedStreak > 0 ? derivedStreak : calculateStreakFromEvents(events)
+    user.recycledToday = (events || []).some((event) => event?.recycled_at && new Date(event.recycled_at).toISOString().slice(0, 10) === new Date().toISOString().slice(0, 10))
+    user.streakMessage = buildStreakMessage(events)
+
+    const levelState = resolveLevel(user.points)
+    user.level = levelState.level
+    user.nextLevel = levelState.nextLevel
+    user.nextLevelPoints = levelState.nextLevelPoints
+
+    // user_material_totals is the server-maintained lifetime aggregate — prefer it
+    // for the kg display. The (now capped) recent-events list is only a fallback,
+    // since it no longer reflects full history once a user passes 60 detections.
+    const fallbackByCategory = (totals || []).reduce((acc, row) => {
+      const key = row?.material_category || row?.category || row?.name || row?.material
+      if (!key) return acc
+      acc[key] = (acc[key] || 0) + Number(row?.item_count || row?.count || row?.quantity || 0)
+      return acc
+    }, {})
+
+    const finalByCategory = Object.keys(fallbackByCategory).length > 0
+      ? Object.fromEntries(Object.entries(fallbackByCategory).map(([key, value]) => [key, estimateKgForMaterial(key, value)]))
+      : (events || []).reduce((acc, row) => {
+          const key = row?.material_category || row?.category || row?.name || row?.material
+          if (!key) return acc
+          acc[key] = (acc[key] || 0) + estimateKgForMaterial(key, row?.quantity || row?.amount || row?.count || 1)
+          return acc
+        }, {})
+
+    materials[0].kg = roundKg(finalByCategory.Plastic || 0)
+    materials[1].kg = roundKg((finalByCategory.Paper || 0) + (finalByCategory.Cardboard || 0))
+    materials[2].kg = roundKg((finalByCategory.Metal || 0) + (finalByCategory.Glass || 0))
+
+    applyWeeklyActivity(events)
+    lastLoadedAt = Date.now()
+  })()
 
   try {
-    const profileResponse = await client.auth.getProfile(currentUser.id)
-    if (!profileResponse?.error) {
-      oauthAvatarUrl = resolveAvatarUrl(profileResponse?.data || null) || oauthAvatarUrl
-    }
-  } catch {
-    // Ignore profile lookup failures and keep the auth payload avatar if any.
+    await inFlightLoad
+  } finally {
+    inFlightLoad = null
   }
-
-  user.name = baseName
-  user.email = currentUser.email || 'Not available'
-  user.initials = buildInitials(baseName)
-  user.photoUrl = oauthAvatarUrl || buildAvatarFallback(baseName)
-
-  const [profileResult, walletResult, streakResult, totalsResult, eventsResult] = await Promise.allSettled([
-    client.database.from('account_profiles').select('display_name, phone, avatar_url, member_since').maybeSingle(),
-    client.database.from('user_points_wallet').select('total_points').maybeSingle(),
-    client.database.from('user_recycling_streak').select('current_streak_days, last_recycle_date').maybeSingle(),
-    client.database.from('user_material_totals').select('material_category, item_count').limit(50),
-    client.database
-      .from('recycling_events')
-      .select('material_category, quantity, recycled_at')
-      .order('recycled_at', { ascending: false }),
-  ])
-
-  const profileResultValue = profileResult.status === 'fulfilled' ? profileResult.value : null
-  const walletResultValue = walletResult.status === 'fulfilled' ? walletResult.value : null
-  const streakResultValue = streakResult.status === 'fulfilled' ? streakResult.value : null
-  const totalsResultValue = totalsResult.status === 'fulfilled' ? totalsResult.value : null
-  const eventsResultValue = eventsResult.status === 'fulfilled' ? eventsResult.value : null
-
-  const profile = profileResultValue?.data || null
-  const wallet = walletResultValue?.data || null
-  const streak = streakResultValue?.data || null
-  const totals = totalsResultValue?.data || []
-  const serverEvents = eventsResultValue?.data || []
-  const localEvents = JSON.parse(localStorage.getItem('giving_recycling_history') || '[]')
-  const events = normalizeEvents([...serverEvents, ...localEvents])
-
-  if (profile?.display_name) {
-    user.name = profile.display_name
-  }
-
-  user.phone = profile?.phone || 'Not available'
-  user.photoUrl = oauthAvatarUrl || profile?.avatar_url || buildAvatarFallback(user.name)
-  user.memberSince = formatMemberSince(profile?.member_since || currentUser.createdAt || currentUser.created_at)
-
-  const walletPoints = walletResultValue?.error
-    ? persistedPoints
-    : Number(wallet?.total_points ?? persistedPoints)
-
-  const nextPoints = Number.isFinite(walletPoints) && walletPoints >= Math.max(user.points, persistedPoints)
-    ? walletPoints
-    : Math.max(user.points, persistedPoints)
-
-  user.points = nextPoints
-  localStorage.setItem('givingPoints', String(user.points))
-
-  const derivedStreak = Number(streak?.current_streak_days || 0)
-  user.streakDays = derivedStreak > 0 ? derivedStreak : calculateStreakFromEvents(events)
-  user.recycledToday = (events || []).some((event) => event?.recycled_at && new Date(event.recycled_at).toISOString().slice(0, 10) === new Date().toISOString().slice(0, 10))
-  user.streakMessage = buildStreakMessage(events)
-
-  const levelState = resolveLevel(user.points)
-  user.level = levelState.level
-  user.nextLevel = levelState.nextLevel
-  user.nextLevelPoints = levelState.nextLevelPoints
-
-  const byCategory = (events || []).reduce((acc, row) => {
-    const key = row?.material_category || row?.category || row?.name || row?.material
-    if (!key) return acc
-    acc[key] = (acc[key] || 0) + estimateKgForMaterial(key, row?.quantity || row?.amount || row?.count || 1)
-    return acc
-  }, {})
-
-  const fallbackByCategory = (totals || []).reduce((acc, row) => {
-    const key = row?.material_category || row?.category || row?.name || row?.material
-    if (!key) return acc
-    acc[key] = (acc[key] || 0) + Number(row?.item_count || row?.count || row?.quantity || 0)
-    return acc
-  }, {})
-
-  const finalByCategory = Object.keys(fallbackByCategory).length > 0 && Object.keys(byCategory).length === 0
-    ? Object.fromEntries(Object.entries(fallbackByCategory).map(([key, value]) => [key, estimateKgForMaterial(key, value)]))
-    : byCategory
-
-  materials[0].kg = roundKg(finalByCategory.Plastic || 0)
-  materials[1].kg = roundKg((finalByCategory.Paper || 0) + (finalByCategory.Cardboard || 0))
-  materials[2].kg = roundKg((finalByCategory.Metal || 0) + (finalByCategory.Glass || 0))
-
-  applyWeeklyActivity(events)
 }
 
 // simple example: based on points toward next level, capped at 100
@@ -419,7 +435,7 @@ watch(
   () => auth.isLoggedIn,
   (isLoggedIn) => {
     if (isLoggedIn) {
-      loadAccountData()
+      loadAccountData({ force: true })
     }
   },
   { immediate: true }
@@ -429,7 +445,7 @@ watch(
   () => auth.user?.avatarUrl,
   () => {
     if (auth.isLoggedIn) {
-      loadAccountData()
+      loadAccountData({ force: true })
     }
   }
 )

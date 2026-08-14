@@ -141,6 +141,7 @@ function mapSessionUser(userData) {
     email: userData.email,
     provider: mapProvider(userData),
     avatarUrl: mapAvatarUrl(userData),
+    createdAt: userData.createdAt || userData.created_at || null,
   }
 }
 

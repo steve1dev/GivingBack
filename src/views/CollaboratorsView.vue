@@ -232,8 +232,8 @@ async function loadCollaborators() {
       selectedYear.value = availableYears.value[0]
     }
   } catch (error) {
-    console.error(error)
-    errorMessage.value = 'We could not load collaborator data. Please try again later.'
+  console.error(error)
+  errorMessage.value = 'We could not load collaborator data. Please try again later.'
   } finally {
     loading.value = false
   }

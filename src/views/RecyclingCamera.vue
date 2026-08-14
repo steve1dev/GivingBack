@@ -5,16 +5,39 @@ import TheNavbar           from '../components/TheNavbar.vue'
 import { getInsforgeClient, useAuthStore } from '../stores/auth.js'
 
 const TFJS_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js'
-const TM_IMAGE_URL = 'https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js'
-const MODEL_BASE_URL = '/tm-my-image-model/'
-const CONFIDENCE_THRESHOLD = 0.92
-const AMBIGUITY_MARGIN = 0.12
+const MOBILENET_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@latest/dist/mobilenet.min.js'
+// A custom-trained (Teachable Machine) model was tried first, but diagnostics
+// against real reference photos showed it overfit to its training photos and
+// didn't generalize (see project history). Swapped to Google's MobileNet —
+// pretrained on ~1.3M real photos (ImageNet) — for actual generalization
+// without needing any training data of our own.
+const TOP_K = 15
+// 1000-way softmax spreads probability far thinner than a 4-class model, so
+// this is calibrated much lower than a typical single-model confidence floor.
+const CONFIDENCE_THRESHOLD = 0.15
+const BURST_FRAME_COUNT = 5
+const BURST_FRAME_INTERVAL_MS = 90
 
+// Curated subset of ImageNet's 1000 classes (exact strings from
+// https://github.com/tensorflow/tfjs-models/blob/master/mobilenet/src/imagenet_classes.ts)
+// that correspond unambiguously to one of our recycling categories. Classes
+// with mixed/uncertain material (e.g. "crate", "milk can", "barrel, cask")
+// are deliberately left out rather than guessed.
 const materialProfiles = {
-  'Plastic bottle': { points: 1, category: 'Plastic', label: 'Plastic Bottle' },
-  Paper: { points: 1, category: 'Paper', label: 'Paper' },
-  Cardboard: { points: 2, category: 'Cardboard', label: 'Cardboard' },
-  Cans: { points: 4, category: 'Glass', label: 'Glass' },
+  'water bottle': { points: 1, category: 'Plastic', label: 'Plastic Bottle' },
+  'pop bottle, soda bottle': { points: 1, category: 'Plastic', label: 'Plastic Bottle' },
+  'pill bottle': { points: 1, category: 'Plastic', label: 'Plastic Container' },
+  bottlecap: { points: 1, category: 'Plastic', label: 'Plastic Cap' },
+  'water jug': { points: 1, category: 'Plastic', label: 'Plastic Jug' },
+  envelope: { points: 1, category: 'Paper', label: 'Paper' },
+  'paper towel': { points: 1, category: 'Paper', label: 'Paper' },
+  'toilet tissue, toilet paper, bathroom tissue': { points: 1, category: 'Paper', label: 'Paper' },
+  carton: { points: 2, category: 'Cardboard', label: 'Cardboard' },
+  'beer bottle': { points: 4, category: 'Glass', label: 'Glass' },
+  'wine bottle': { points: 4, category: 'Glass', label: 'Glass' },
+  'beer glass': { points: 4, category: 'Glass', label: 'Glass' },
+  vase: { points: 4, category: 'Glass', label: 'Glass' },
+  'whiskey jug': { points: 4, category: 'Glass', label: 'Glass' },
 }
 
 const supportedMaterialsText = Object.values(materialProfiles)
@@ -45,6 +68,7 @@ const successNoticeMessage = ref('')
 
 let model = null
 let mediaStream = null
+let modelInputCanvas = null
 
 async function loadTotalPoints() {
   if (!auth.isLoggedIn) {
@@ -180,12 +204,9 @@ async function loadModel() {
 
   try {
     await loadExternalScript(TFJS_URL)
-    await loadExternalScript(TM_IMAGE_URL)
+    await loadExternalScript(MOBILENET_URL)
 
-    model = await window.tmImage.load(
-      `${MODEL_BASE_URL}model.json`,
-      `${MODEL_BASE_URL}metadata.json`,
-    )
+    model = await window.mobilenet.load({ version: 2, alpha: 1.0 })
 
     isModelReady.value = true
     statusLabel.value = `Model ready. Supported materials: ${supportedMaterialsText}.`
@@ -193,7 +214,7 @@ async function loadModel() {
     syncReadyStatus()
   } catch (error) {
     console.error(error)
-    statusLabel.value = 'Could not load the model. Copy your model to public/tm-my-image-model/.'
+    statusLabel.value = 'Could not load the recognition model. Check your connection and reload.'
     statusTone.value = 'error'
   }
 }
@@ -240,6 +261,46 @@ async function startCamera() {
   }
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function drawCenteredSquareFrame(video, canvas) {
+  const size = Math.min(video.videoWidth, video.videoHeight)
+  const sourceX = (video.videoWidth - size) / 2
+  const sourceY = (video.videoHeight - size) / 2
+
+  canvas.width = size
+  canvas.height = size
+  canvas.getContext('2d').drawImage(video, sourceX, sourceY, size, size, 0, 0, size, size)
+}
+
+async function predictAveraged(video) {
+  if (!modelInputCanvas) {
+    modelInputCanvas = document.createElement('canvas')
+  }
+
+  const totals = new Map()
+
+  for (let frame = 0; frame < BURST_FRAME_COUNT; frame += 1) {
+    drawCenteredSquareFrame(video, modelInputCanvas)
+    // eslint-disable-next-line no-await-in-loop
+    const predictions = await model.classify(modelInputCanvas, TOP_K)
+    for (const prediction of predictions) {
+      totals.set(prediction.className, (totals.get(prediction.className) || 0) + prediction.probability)
+    }
+
+    if (frame < BURST_FRAME_COUNT - 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await sleep(BURST_FRAME_INTERVAL_MS)
+    }
+  }
+
+  return [...totals.entries()]
+    .map(([className, sum]) => ({ className, probability: sum / BURST_FRAME_COUNT }))
+    .sort((left, right) => right.probability - left.probability)
+}
+
 async function capturePhoto() {
   if (isCapturing.value) {
     return
@@ -258,6 +319,8 @@ async function capturePhoto() {
   }
 
   isCapturing.value = true
+  statusLabel.value = 'Analyzing...'
+  statusTone.value = 'idle'
 
   try {
     const canvas = canvasRef.value
@@ -269,96 +332,90 @@ async function capturePhoto() {
 
     capturedPhoto.value = canvas.toDataURL('image/png')
 
-    const predictions = await model.predict(canvas)
-    const sortedPredictions = [...predictions].sort((left, right) => {
-      return right.probability - left.probability
-    })
-    const bestPrediction = sortedPredictions.reduce((best, current) => {
-      return current.probability > best.probability ? current : best
-    })
-    const secondPrediction = sortedPredictions[1]
+    const sortedPredictions = await predictAveraged(videoRef.value)
+    const bestRawPrediction = sortedPredictions[0]
 
-    const detectedObject = bestPrediction.className
-    const probability = bestPrediction.probability
-    const probabilityGap = secondPrediction ? probability - secondPrediction.probability : probability
+    // MobileNet's raw top-1 is usually an unrelated ImageNet class (e.g. the
+    // hand holding the item). Look through its top 5 guesses for the first
+    // one that maps to a recycling category, instead of trusting only #1.
+    const matchedPrediction = sortedPredictions
+      .slice(0, 5)
+      .find((prediction) => materialProfiles[prediction.className])
 
     topPredictions.value = sortedPredictions.slice(0, 3).map((prediction) => ({
       className: prediction.className,
       probability: `${(prediction.probability * 100).toFixed(1)}%`,
     }))
-objectLabel.value = detectedObject
-confidenceLabel.value = `${(probability * 100).toFixed(2)}%`
-earnedPointsLabel.value = 0
 
-if (probability < CONFIDENCE_THRESHOLD) {
-  categoryLabel.value = 'Unknown'
-  statusLabel.value = 'Confidence is too low. Try moving the object closer and improving the lighting.'
-  statusTone.value = 'warning'
-  return
-}
+    const displayPrediction = matchedPrediction || bestRawPrediction
+    objectLabel.value = displayPrediction.className
+    confidenceLabel.value = `${(displayPrediction.probability * 100).toFixed(2)}%`
+    earnedPointsLabel.value = 0
 
-if (secondPrediction && probabilityGap < AMBIGUITY_MARGIN) {
-  categoryLabel.value = 'Ambiguous'
-  statusLabel.value = `Ambiguous classification between ${bestPrediction.className} and ${secondPrediction.className}.`
-  statusTone.value = 'warning'
-  return
-}
-
-if (materialProfiles[detectedObject]) {
-  const data = materialProfiles[detectedObject]
-
-  objectLabel.value = data.label
-  categoryLabel.value = data.category
-  earnedPointsLabel.value = data.points
-  statusLabel.value = `Material detected: ${data.category}`
-  statusTone.value = 'success'
-
-  let rewardMessage = ` ${data.points} Point have been added to your profile for detecting ${data.category}!`
-
-  try {
-    const persisted = await persistRecyclingDetection(detectedObject, probability)
-    const previousPoints = Number(localStorage.getItem('givingPoints')) || totalPoints.value || 0
-    const persistedPoints = Number(persisted?.total_points)
-
-    if (Number.isFinite(persistedPoints) && persistedPoints >= previousPoints) {
-      totalPoints.value = persistedPoints
-    } else {
-      totalPoints.value = previousPoints + data.points
+    if (!matchedPrediction) {
+      categoryLabel.value = 'Unknown'
+      statusLabel.value = `Didn't recognize this as ${supportedMaterialsText}. Closest guess: ${bestRawPrediction.className}.`
+      statusTone.value = 'warning'
+      return
     }
 
-    saveLocalRecyclingActivity(data.category, data.points, detectedObject)
-    await refreshWalletFromServer()
+    if (matchedPrediction.probability < CONFIDENCE_THRESHOLD) {
+      categoryLabel.value = 'Unknown'
+      statusLabel.value = 'Confidence is too low. Try moving the object closer and improving the lighting.'
+      statusTone.value = 'warning'
+      return
+    }
+
+    const detectedObject = matchedPrediction.className
+    const probability = matchedPrediction.probability
+    const data = materialProfiles[detectedObject]
+
+    objectLabel.value = data.label
+    categoryLabel.value = data.category
+    earnedPointsLabel.value = data.points
+    statusLabel.value = `Material detected: ${data.category}`
+    statusTone.value = 'success'
+
+    let rewardMessage = ` ${data.points} Point have been added to your profile for detecting ${data.category}!`
+
+    try {
+      const persisted = await persistRecyclingDetection(detectedObject, probability)
+      const previousPoints = Number(localStorage.getItem('givingPoints')) || totalPoints.value || 0
+      const persistedPoints = Number(persisted?.total_points)
+
+      if (Number.isFinite(persistedPoints) && persistedPoints >= previousPoints) {
+        totalPoints.value = persistedPoints
+      } else {
+        totalPoints.value = previousPoints + data.points
+      }
+
+      saveLocalRecyclingActivity(data.category, data.points, detectedObject)
+      await refreshWalletFromServer()
+    } catch (error) {
+      console.error(error)
+      const previousPoints = Number(localStorage.getItem('givingPoints')) || totalPoints.value || 0
+      totalPoints.value = previousPoints + data.points
+      saveLocalRecyclingActivity(data.category, data.points, detectedObject)
+      localStorage.setItem('givingPoints', String(totalPoints.value))
+      rewardMessage = ` ${data.points} Point have been added locally. They will be synced with your profile soon.`
+      statusLabel.value = `Material detected: ${data.category}. Pending sync with server.`
+      statusTone.value = 'warning'
+    }
+
+    localStorage.setItem('givingPoints', String(totalPoints.value))
+    successNoticeMessage.value = rewardMessage
+    showSuccessNotice.value = true
+
+    if (auth.isLoggedIn) {
+      router.push({ path: '/Account', query: { reward: rewardMessage } })
+    }
   } catch (error) {
     console.error(error)
-    const previousPoints = Number(localStorage.getItem('givingPoints')) || totalPoints.value || 0
-    totalPoints.value = previousPoints + data.points
-    saveLocalRecyclingActivity(data.category, data.points, detectedObject)
-    localStorage.setItem('givingPoints', String(totalPoints.value))
-    rewardMessage = ` ${data.points} Point have been added locally. They will be synced with your profile soon.`
-    statusLabel.value = `Material detected: ${data.category}. Pending sync with server.`
-    statusTone.value = 'warning'
+    statusLabel.value = 'Could not analyze the image.'
+    statusTone.value = 'error'
+  } finally {
+    isCapturing.value = false
   }
-
-  localStorage.setItem('givingPoints', String(totalPoints.value))
-  successNoticeMessage.value = rewardMessage
-  showSuccessNotice.value = true
-
-  if (auth.isLoggedIn) {
-    router.push({ path: '/Account', query: { reward: rewardMessage } })
-  }
-  return
-}
-
-categoryLabel.value = 'Unknown'
-statusLabel.value = 'This class is not trained in the model.'
-statusTone.value = 'warning'
-} catch (error) {
-  console.error(error)
-  statusLabel.value = 'Could not analyze the image.'
-  statusTone.value = 'error'
-} finally {
-  isCapturing.value = false
-}
 }
 
 function resetPoints() {
@@ -476,8 +533,9 @@ onBeforeUnmount(() => {
         </button>
 
         <p class="helper-text">
-          This model supports: {{ supportedMaterialsText }}. To accurately detect metal,
-          retrain the model by adding the Metal class.
+          This model recognizes: {{ supportedMaterialsText }}. It works best with a
+          single item — like a bottle, jar, or envelope — clearly centered and
+          well-lit in the frame.
         </p>
       </aside>
     </div>
